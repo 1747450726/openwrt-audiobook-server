@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# audiobook_server.py - 完整生产版本（方案A: Blob URL + 正确排序）
+# audiobook_server.py
 
 import os
 import json
@@ -15,14 +15,13 @@ from urllib.parse import urlparse, unquote, parse_qs
 from datetime import datetime
 import re
 
-# ================= 配置 =================
 CONFIG = {
     'host': '::',
     'port': 8080,
     'data_dir': '/root/audiobook/data',
-    'audio_dir': '/mnt/mmcblk0p23/audiobooks/FRXXZ',
-    'log_dir': '/root/audiobook/log',
-    'log_file': '/root/audiobook/log/server.log',
+    'audio_dir': '/你的音频库文件位置',
+    'log_dir': '/root/audiobook/log',    #日志路径
+    'log_file': '/root/audiobook/log/server.log',    #懒得写自己看吧
     'token_file': '/root/audiobook/data/tokens.json',
     'progress_file': '/root/audiobook/data/progress.json',
     'settings_file': '/root/audiobook/data/settings.json',
@@ -36,7 +35,6 @@ CONFIG = {
 os.makedirs(CONFIG['data_dir'], exist_ok=True)
 os.makedirs(CONFIG['log_dir'], exist_ok=True)
 
-# ================= 日志 =================
 logger = logging.getLogger("audiobook")
 logger.setLevel(logging.DEBUG)
 logger.handlers.clear()
@@ -57,22 +55,16 @@ console.setLevel(logging.INFO)
 console.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s %(message)s'))
 logger.addHandler(console)
 
-# ================= IPv6 Server =================
 class HTTPServerV6(HTTPServer):
     address_family = socket.AF_INET6
     allow_reuse_address = True
 
-# ================= 排序函数 - 自   排序（数字从小到大，字母顺序） =================
 def natural_sort_key(text):
-    """
-    自然排序：将文本转换为可排序的格式
-    例如：'01-abc.mp3', '02-xyz.mp3', '10-test.mp3' 会按 1, 2, 10 排序
-    """
+    
     def atoi(text):
         return int(text) if text.isdigit() else text.lower()
     return [atoi(c) for c in re.split(r'(\d+)', text)]
 
-# ================= 数据存储 =================
 def load_json(path, default=None):
     if default is None: 
         default = {}
@@ -95,7 +87,6 @@ def save_json(path, data):
         logger.error("Save %s error: %s", path, e)
         return False
 
-# ================= 数据初始化 =================
 TOKENS = load_json(CONFIG['token_file'])
 PROGRESS = load_json(CONFIG['progress_file'])
 SETTINGS = load_json(CONFIG['settings_file'])
@@ -118,7 +109,6 @@ def init_users():
 USERS = init_users()
 lock = threading.RLock()
 
-# ================= Token管理 =================
 def create_token(username):
     token = secrets.token_hex(32)
     expire = time.time() + CONFIG['token_expire']
@@ -152,7 +142,6 @@ def cleanup_tokens():
 cleanup_thread = threading.Thread(target=cleanup_tokens, daemon=True)
 cleanup_thread.start()
 
-# ================= 行为记录 =================
 def record_behavior(username, ip, action, details=None):
     try:
         with lock:
@@ -170,7 +159,6 @@ def record_behavior(username, ip, action, details=None):
     except Exception as e:
         logger.error("Record behavior error: %s", e)
 
-# ================= Handler =================
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         logger.info("%s - %s", self.client_address[0], fmt % args)
@@ -372,7 +360,6 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 logger.error("Scan %s error: %s", base, e)
         
-        # ✅ FIX 1: 自然排序（数字从小到大，字母顺序）
         for d in dirs.values():
             d.sort(key=lambda x: natural_sort_key(x['name']))
         files.sort(key=lambda x: natural_sort_key(x['name']))
@@ -421,7 +408,7 @@ class Handler(BaseHTTPRequestHandler):
                             })
                         except:
                             continue
-                # ✅ FIX 2: 自然排序章节
+                            
                 files.sort(key=lambda x: natural_sort_key(x['name']))
                 chapters.extend(files)
             except:
@@ -495,7 +482,6 @@ class Handler(BaseHTTPRequestHandler):
         self._json({'success': True})
 
     def _audio_file(self, path):
-        """✅ FIX 3: 完整的Range请求支持（HTTP 206 Partial Content）"""
         username = self._auth()
         if not username:
             self._error(401, '未授权')
@@ -518,12 +504,10 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 mime = mimetypes.guess_type(real)[0] or 'audio/mpeg'
                 size = os.path.getsize(real)
-                
-                # 处理 Range 请求（HTTP 206）
+
                 range_header = self.headers.get('Range', '')
                 
                 if range_header:
-                    # 例如: Range: bytes=0-1023
                     try:
                         range_str = range_header.replace('bytes=', '')
                         start, end = range_str.split('-')
@@ -561,7 +545,6 @@ class Handler(BaseHTTPRequestHandler):
                         self.send_error(400, 'Invalid Range')
                         return
                 else:
-                    # 返回完整文件（HTTP 200）
                     self.send_response(200)
                     self.send_header('Content-Type', mime)
                     self.send_header('Content-Length', str(size))
@@ -723,8 +706,6 @@ class Handler(BaseHTTPRequestHandler):
         record_behavior(username, self.client_address[0], 'set_user_path', {'target': target})
         logger.info("Admin set paths for user: %s", target)
         self._json({'success': True})
-
-# ================= HTML 页面 =================
 HTML = """<!DOCTYPE html>
 <html>
 <head>
@@ -1455,7 +1436,9 @@ ADMIN_HTML = """<!DOCTYPE html>
 </html>
 """
 
-# ================= 主程序 =================
+
+
+
 def main():
     logger.info("Starting Audiobook Server...")
     logger.info("Listening on [%s]:%d", CONFIG['host'], CONFIG['port'])
