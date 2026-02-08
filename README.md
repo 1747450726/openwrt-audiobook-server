@@ -1,4 +1,4 @@
-基于OpenWRT路由器上运行的Python有声书Web服务器，支持IPv4/IPv6双栈访问
+基于OpenWRT路由器上运行的Python有声书Web音频服务器，支持IPv4/IPv6双栈访问
 
 项目简介
 一个专为OpenWRT路由器设计的轻量级有声书Web服务器，支持IPv4/IPv6双栈访问，具备完整的用户管理、播放进度记忆和后台监控功能。
